@@ -1,0 +1,125 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+model User {
+  id String @id @default(uuid())
+
+  // ── Liaison AD ──
+  ldapGuid String @unique @map("ldap_guid") // objectGUID - immuable
+  username String @unique // sAMAccountName
+
+  // ── Infos synchronisées depuis l'AD ──
+  email     String
+  firstName String @map("first_name")
+  lastName  String @map("last_name")
+
+  // ── Données applicatives (gérées localement) ──
+  role      Role     @default(USER)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  groups    UserGroup[]
+  favorites Favorite[]
+  queries   Query[]     @relation("CreatedBy")
+
+  @@map("users")
+}
+
+model Group {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  users   UserGroup[]
+  queries QueryGroup[]
+
+  @@map("groups")
+}
+
+model UserGroup {
+  userId  String @map("user_id")
+  groupId String @map("group_id")
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  assignedAt DateTime @default(now()) @map("assigned_at")
+
+  @@id([userId, groupId])
+  @@map("user_groups")
+}
+
+model Sector {
+  id   String @id @default(uuid())
+  name String @unique
+
+  queries Query[]
+
+  @@map("sectors")
+}
+
+enum Visibility {
+  PRIVATE
+  SHARED
+  PUBLIC
+}
+
+model Query {
+  id          String     @id @default(uuid())
+  name        String
+  description String?
+  sqlContent  String     @map("sql_content")
+  visibility  Visibility @default(PRIVATE)
+  createdById String     @map("created_by_id")
+  sectorId    String     @map("sector_id")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  createdBy User         @relation("CreatedBy", fields: [createdById], references: [id])
+  sector    Sector       @relation(fields: [sectorId], references: [id])
+  groups    QueryGroup[]
+  favorites Favorite[]
+
+  @@map("queries")
+}
+
+model QueryGroup {
+  queryId String @map("query_id")
+  groupId String @map("group_id")
+
+  query Query @relation(fields: [queryId], references: [id], onDelete: Cascade)
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  assignedAt DateTime @default(now()) @map("assigned_at")
+
+  @@id([queryId, groupId])
+  @@map("query_groups")
+}
+
+model Favorite {
+  userId  String @map("user_id")
+  queryId String @map("query_id")
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  query Query @relation(fields: [queryId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@id([userId, queryId])
+  @@map("favorites")
+}
