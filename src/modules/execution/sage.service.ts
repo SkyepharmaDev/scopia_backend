@@ -14,6 +14,16 @@ export interface SageQueryResult {
   total: number;
 }
 
+/** Forme d'une erreur renvoyée par le driver mssql (RequestError). */
+interface MssqlRequestError extends Error {
+  number?: number;
+  lineNumber?: number;
+  state?: number;
+  class?: number;
+  procName?: string;
+  code?: string;
+}
+
 const FORBIDDEN_PATTERN =
   /\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE|EXEC|EXECUTE|MERGE|GRANT|REVOKE)\b/i;
 
@@ -111,7 +121,12 @@ export class SageService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('Connexion à Sage X3 indisponible.');
     }
 
-    const result = await this.pool.request().query(sqlText);
+    let result: sql.IResult<Record<string, unknown>>;
+    try {
+      result = await this.pool.request().query(sqlText);
+    } catch (error) {
+      throw this.toSqlException(error);
+    }
 
     const columns = result.recordset.columns
       ? Object.keys(result.recordset.columns)
@@ -124,6 +139,36 @@ export class SageService implements OnModuleInit, OnModuleDestroy {
       rows: result.recordset,
       total: result.recordset.length,
     };
+  }
+
+  /**
+   * Transforme une erreur du driver mssql en BadRequestException structurée
+   * afin que le frontend puisse afficher le message et surligner la ligne fautive.
+   */
+  private toSqlException(error: unknown): BadRequestException {
+    const err = error as MssqlRequestError | undefined;
+    const isRequestError =
+      err?.name === 'RequestError' || typeof err?.number === 'number';
+
+    if (isRequestError && err) {
+      this.logger.warn(
+        `Erreur SQL Server (${err.number ?? '?'}) ligne ${err.lineNumber ?? '?'} : ${err.message}`,
+      );
+      return new BadRequestException({
+        message: err.message ?? 'Erreur SQL Server.',
+        sqlError: {
+          number: err.number,
+          lineNumber: err.lineNumber,
+          state: err.state,
+          class: err.class,
+          procName: err.procName,
+        },
+      });
+    }
+
+    const message = error instanceof Error ? error.message : String(error);
+    this.logger.error(`Échec exécution requête Sage : ${message}`);
+    return new BadRequestException({ message });
   }
 
   private validateSql(sqlText: string): void {

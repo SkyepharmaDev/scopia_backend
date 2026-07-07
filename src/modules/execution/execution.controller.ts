@@ -1,9 +1,11 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../auth/types/jwt-payload.type';
 import { QueriesService } from '../queries/queries.service';
 import { ExecutionService } from './execution.service';
 import { SageService } from './sage.service';
+import { RunQueryDto } from './dto/run-query.dto';
 
 @Controller('execution')
 export class ExecutionController {
@@ -16,6 +18,12 @@ export class ExecutionController {
   @Get('health')
   health() {
     return this.sageService.testConnection();
+  }
+
+  @Roles('ADMIN')
+  @Post('run')
+  run(@Body() dto: RunQueryDto) {
+    return this.executionService.execute(dto.sqlContent);
   }
 
   @Get(':queryId')
