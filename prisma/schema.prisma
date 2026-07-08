@@ -45,8 +45,9 @@ model Group {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  users   UserGroup[]
-  queries QueryGroup[]
+  users        UserGroup[]
+  queries      QueryGroup[]
+  ownedQueries Query[]      @relation("OwnedQueries")
 
   @@map("groups")
 }
@@ -54,6 +55,10 @@ model Group {
 model UserGroup {
   userId  String @map("user_id")
   groupId String @map("group_id")
+
+  // Capacité d'édition au sein du groupe : distingue les membres-éditeurs
+  // (qui peuvent modifier les requêtes du groupe) des simples membres (lecture)
+  canEdit Boolean @default(false) @map("can_edit")
 
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
@@ -87,13 +92,15 @@ model Query {
   visibility  Visibility @default(PRIVATE)
   createdById String     @map("created_by_id")
   sectorId    String     @map("sector_id")
+  ownerGroupId String?   @map("owner_group_id")
   createdAt   DateTime   @default(now()) @map("created_at")
   updatedAt   DateTime   @updatedAt @map("updated_at")
 
-  createdBy User         @relation("CreatedBy", fields: [createdById], references: [id])
-  sector    Sector       @relation(fields: [sectorId], references: [id])
-  groups    QueryGroup[]
-  favorites Favorite[]
+  createdBy  User         @relation("CreatedBy", fields: [createdById], references: [id])
+  sector     Sector       @relation(fields: [sectorId], references: [id])
+  ownerGroup Group?       @relation("OwnedQueries", fields: [ownerGroupId], references: [id])
+  groups     QueryGroup[]
+  favorites  Favorite[]
 
   @@map("queries")
 }

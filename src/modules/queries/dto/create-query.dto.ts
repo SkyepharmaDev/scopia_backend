@@ -28,6 +28,10 @@ export class CreateQueryDto {
   @IsUUID()
   sectorId: string;
 
+  @IsUUID()
+  @IsOptional()
+  ownerGroupId?: string;
+
   @IsEnum(Visibility)
   @IsOptional()
   visibility?: Visibility;

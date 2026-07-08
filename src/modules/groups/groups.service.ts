@@ -109,15 +109,28 @@ export class GroupsService {
     return this.prisma.group.delete({ where: { id } });
   }
 
-  async addUser(groupId: string, userId: string) {
+  async addUser(groupId: string, userId: string, canEdit = false) {
     await this.findGroupOrThrow(groupId);
     try {
       return await this.prisma.userGroup.create({
-        data: { groupId, userId },
+        data: { groupId, userId, canEdit },
       });
     } catch {
       throw new ConflictException('Cet utilisateur est déjà dans le groupe.');
     }
+  }
+
+  async setMemberCanEdit(groupId: string, userId: string, canEdit: boolean) {
+    const membership = await this.prisma.userGroup.findUnique({
+      where: { userId_groupId: { userId, groupId } },
+    });
+    if (!membership) {
+      throw new NotFoundException("L'utilisateur n'est pas dans ce groupe.");
+    }
+    return this.prisma.userGroup.update({
+      where: { userId_groupId: { userId, groupId } },
+      data: { canEdit },
+    });
   }
 
   async removeUser(groupId: string, userId: string) {

@@ -5,6 +5,7 @@ import type { AuthenticatedUser } from '../auth/types/jwt-payload.type';
 
 export type QueryForAccessCheck = {
   visibility: 'PRIVATE' | 'SHARED' | 'PUBLIC';
+  ownerGroupId?: string | null;
   groups?: { groupId: string }[];
 };
 
@@ -24,6 +25,38 @@ export class QueryAccessService {
     return memberships.map((m) => m.groupId);
   }
 
+  /** Groupes dans lesquels l'utilisateur a la capacité d'édition (canEdit). */
+  async getUserEditableGroupIds(userId: string): Promise<string[]> {
+    const memberships = await this.prisma.userGroup.findMany({
+      where: { userId, canEdit: true },
+      select: { groupId: true },
+    });
+    return memberships.map((m) => m.groupId);
+  }
+
+  /**
+   * Peut créer/tester des requêtes SQL : ADMIN, ou membre-éditeur d'au moins
+   * un groupe. Le statut « éditeur » découle uniquement de l'appartenance.
+   */
+  async canAuthor(user: AuthenticatedUser): Promise<boolean> {
+    if (this.isAdmin(user)) {
+      return true;
+    }
+
+    const count = await this.prisma.userGroup.count({
+      where: { userId: user.id, canEdit: true },
+    });
+    return count > 0;
+  }
+
+  async assertCanAuthor(user: AuthenticatedUser): Promise<void> {
+    if (!(await this.canAuthor(user))) {
+      throw new ForbiddenException(
+        "Vous n'êtes membre-éditeur d'aucun groupe.",
+      );
+    }
+  }
+
   canAccess(
     user: AuthenticatedUser,
     query: QueryForAccessCheck,
@@ -37,12 +70,35 @@ export class QueryAccessService {
       return true;
     }
 
+    // Membre du groupe propriétaire : accès quelle que soit la visibilité
+    if (query.ownerGroupId && userGroupIds.includes(query.ownerGroupId)) {
+      return true;
+    }
+
     if (query.visibility === 'SHARED') {
       const queryGroupIds = query.groups?.map((g) => g.groupId) ?? [];
       return queryGroupIds.some((id) => userGroupIds.includes(id));
     }
 
     return false;
+  }
+
+  /**
+   * Droit d'édition d'une requête : ADMIN partout, sinon uniquement si la
+   * requête appartient à un groupe où l'utilisateur est membre-éditeur.
+   */
+  canEdit(
+    user: AuthenticatedUser,
+    query: QueryForAccessCheck,
+    editableGroupIds: string[],
+  ): boolean {
+    if (this.isAdmin(user)) {
+      return true;
+    }
+
+    return (
+      !!query.ownerGroupId && editableGroupIds.includes(query.ownerGroupId)
+    );
   }
 
   async assertCanAccess(
@@ -58,6 +114,21 @@ export class QueryAccessService {
     }
   }
 
+  async assertCanEdit(
+    user: AuthenticatedUser,
+    query: QueryForAccessCheck,
+  ): Promise<void> {
+    const editableGroupIds = this.isAdmin(user)
+      ? []
+      : await this.getUserEditableGroupIds(user.id);
+
+    if (!this.canEdit(user, query, editableGroupIds)) {
+      throw new ForbiddenException(
+        "Vous n'avez pas le droit de modifier cette requête.",
+      );
+    }
+  }
+
   async buildAccessibleQueryWhere(
     user: AuthenticatedUser,
   ): Promise<Prisma.QueryWhereInput> {
@@ -70,6 +141,7 @@ export class QueryAccessService {
     return {
       OR: [
         { visibility: 'PUBLIC' },
+        { ownerGroupId: { in: groupIds } },
         {
           visibility: 'SHARED',
           groups: { some: { groupId: { in: groupIds } } },

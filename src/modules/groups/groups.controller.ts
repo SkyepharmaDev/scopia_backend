@@ -13,7 +13,11 @@ import type { AuthenticatedUser } from '../auth/types/jwt-payload.type';
 import { GroupsService } from './groups.service';
 import { CreateGroupDto } from './dto/create-group.dto';
 import { UpdateGroupDto } from './dto/update-group.dto';
-import { AssignMemberDto, AssignQueryDto } from './dto/assign-member.dto';
+import {
+  AssignMemberDto,
+  AssignQueryDto,
+  UpdateMemberDto,
+} from './dto/assign-member.dto';
 
 @Controller('groups')
 export class GroupsController {
@@ -53,7 +57,17 @@ export class GroupsController {
   @Roles('ADMIN')
   @Post(':id/users')
   addUser(@Param('id') id: string, @Body() dto: AssignMemberDto) {
-    return this.groupsService.addUser(id, dto.userId);
+    return this.groupsService.addUser(id, dto.userId, dto.canEdit ?? false);
+  }
+
+  @Roles('ADMIN')
+  @Patch(':id/users/:userId')
+  updateUser(
+    @Param('id') id: string,
+    @Param('userId') userId: string,
+    @Body() dto: UpdateMemberDto,
+  ) {
+    return this.groupsService.setMemberCanEdit(id, userId, dto.canEdit);
   }
 
   @Roles('ADMIN')

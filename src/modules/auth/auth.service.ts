@@ -44,8 +44,26 @@ export class AuthService {
         firstName: user.firstName,
         lastName: user.lastName,
         role: user.role,
+        canAuthor: await this.computeCanAuthor(user.id, user.role),
       },
     };
+  }
+
+  /**
+   * Peut créer/tester des requêtes SQL : ADMIN, ou membre-éditeur (canEdit)
+   * d'au moins un groupe. Le statut « éditeur » découle de l'appartenance.
+   */
+  private async computeCanAuthor(
+    userId: string,
+    role: string,
+  ): Promise<boolean> {
+    if (role === 'ADMIN') {
+      return true;
+    }
+    const count = await this.prisma.userGroup.count({
+      where: { userId, canEdit: true },
+    });
+    return count > 0;
   }
 
   /**
@@ -146,6 +164,9 @@ export class AuthService {
       throw new UnauthorizedException('Utilisateur introuvable.');
     }
 
-    return user;
+    return {
+      ...user,
+      canAuthor: await this.computeCanAuthor(user.id, user.role),
+    };
   }
 }
